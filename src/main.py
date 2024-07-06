@@ -8,118 +8,11 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from load_data import get_dataset
 
+import torch.optim as optim
+from time_series_transformer import TimeSeriesTransformer
+from time_series_transformer_batchnorm import TSTransformerEncoder
+from utils import get_dataloaders
 
-# Positional Encodings
-class FixedPositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(FixedPositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
-
-    def forward(self, x):
-        x = x + self.pe[:, :x.size(1), :]
-        return self.dropout(x)
-
-class LearnedPositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(LearnedPositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        self.pe = nn.Parameter(torch.randn(1, max_len, d_model))
-
-    def forward(self, x):
-        x = x + self.pe[:, :x.size(1), :]
-        return self.dropout(x)
-
-def get_pos_encoder(pos_encoding):
-    if pos_encoding == 'fixed':
-        return FixedPositionalEncoding
-    elif pos_encoding == 'learned':
-        return LearnedPositionalEncoding
-    else:
-        raise ValueError(f"Unknown positional encoding type: {pos_encoding}")
-
-# Activation Function
-def _get_activation_fn(activation):
-    if activation == "relu":
-        return F.relu
-    elif activation == "gelu":
-        return F.gelu
-    else:
-        raise ValueError(f"Invalid activation function: {activation}")
-
-# Custom Transformer Encoder Layer with Batch Normalization
-class TransformerBatchNormEncoderLayer(nn.Module):
-    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation="gelu"):
-        super().__init__()
-        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
-        self.norm1 = nn.BatchNorm1d(d_model)
-        self.norm2 = nn.BatchNorm1d(d_model)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-
-        self.activation = _get_activation_fn(activation)
-
-    def forward(self, src, src_mask=None, src_key_padding_mask=None, **kwargs):
-        src2 = self.self_attn(src, src, src, attn_mask=src_mask, key_padding_mask=src_key_padding_mask)[0]
-        src = src + self.dropout1(src2)
-        src = src.transpose(0, 1).transpose(1, 2)
-        src = self.norm1(src)
-        src = src.transpose(1, 2).transpose(0, 1)
-        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
-        src = src + self.dropout2(src2)
-        src = src.transpose(0, 1).transpose(1, 2)
-        src = self.norm2(src)
-        src = src.transpose(1, 2).transpose(0, 1)
-        return src
-
-# Main Transformer Encoder Model
-class TSTransformerEncoder(nn.Module):
-    def __init__(self, feat_dim, max_len, d_model, n_heads, num_layers, dim_feedforward, dropout=0.1,
-                 pos_encoding='fixed', activation='gelu', norm='BatchNorm', freeze=False):
-        super(TSTransformerEncoder, self).__init__()
-
-        self.max_len = max_len
-        self.d_model = d_model
-        self.n_heads = n_heads
-
-        self.project_inp = nn.Linear(feat_dim, d_model)
-        self.pos_enc = get_pos_encoder(pos_encoding)(d_model, dropout=dropout*(1.0 - freeze), max_len=max_len)
-
-        if norm == 'LayerNorm':
-            encoder_layer = TransformerEncoderLayer(d_model, self.n_heads, dim_feedforward, dropout*(1.0 - freeze), activation=activation)
-        else:
-            encoder_layer = TransformerBatchNormEncoderLayer(d_model, self.n_heads, dim_feedforward, dropout*(1.0 - freeze), activation=activation)
-
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
-
-        self.output_layer = nn.Linear(d_model, feat_dim)
-
-        self.act = _get_activation_fn(activation)
-
-        self.dropout1 = nn.Dropout(dropout)
-
-        self.feat_dim = feat_dim
-
-    def forward(self, X, padding_masks):
-        inp = X.permute(1, 0, 2)
-        inp = self.project_inp(inp) * math.sqrt(self.d_model)
-        inp = self.pos_enc(inp)
-        output = self.transformer_encoder(inp, src_key_padding_mask=~padding_masks)
-        output = self.act(output)
-        output = output.permute(1, 0, 2)
-        output = self.dropout1(output)
-        output = self.output_layer(output)
-        return output
 
 ds_list = ["UniMiB SHAR",
            "UCI HAR",
@@ -136,54 +29,90 @@ X_train, y_train, X_valid, y_valid, X_test, y_test, k_size, EPOCHS, t_names = ge
 train_dataset = torch.utils.data.TensorDataset(torch.tensor(X_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.long))
 val_dataset = torch.utils.data.TensorDataset(torch.tensor(X_valid, dtype=torch.float32), torch.tensor(y_valid, dtype=torch.long))
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+train_loader, valid_loader, test_loader = get_dataloaders(X_train, y_train, X_valid, y_valid, X_test, y_test)
 
-# Training Function
-def train_model(model, train_loader, criterion, optimizer, num_epochs):
-    model.train()
+
+input_timesteps = X_train.shape[1]
+in_channels = X_train.shape[2]
+patch_size = 16
+embedding_dim = 128
+num_classes = len(torch.unique(y_train))
+
+# Choose positional encoding type
+pos_encoding_type = 'fixed'
+
+# Instantiate models with chosen positional encoding
+model1 = TimeSeriesTransformer(input_timesteps, in_channels, patch_size, embedding_dim, pos_encoding=pos_encoding_type, num_classes=num_classes)
+model2 = TSTransformerEncoder(feat_dim=in_channels, max_len=input_timesteps, d_model=embedding_dim, n_heads=8, num_layers=6, dim_feedforward=128, norm='BatchNorm', pos_encoding=pos_encoding_type, num_classes=num_classes)
+
+# Set up optimizer and criterion
+optimizer1 = optim.Adam(model1.parameters(), lr=0.001)
+optimizer2 = optim.Adam(model2.parameters(), lr=0.001)
+criterion = nn.CrossEntropyLoss()
+
+# Training function
+def train_model(model, optimizer, train_loader, valid_loader, num_epochs=10):
+    best_acc = 0.0
+    best_model_wts = None
     for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        running_corrects = 0
         for inputs, labels in train_loader:
             optimizer.zero_grad()
-            padding_masks = (inputs != 0).any(dim=-1)
-            outputs = model(inputs, padding_masks)
-            outputs = outputs.view(-1, model.feat_dim)  # Flatten output to (batch_size * seq_length, feat_dim)
-            labels = labels.view(-1)  # Flatten labels to (batch_size * seq_length)
-            loss = criterion(outputs, labels)
+            outputs = model(inputs)
+            loss = criterion(outputs, labels.long())
             loss.backward()
             optimizer.step()
 
-# Evaluation Function
-def evaluate_model(model, val_loader, criterion):
+            running_loss += loss.item() * inputs.size(0)
+            _, preds = torch.max(outputs, 1)
+            running_corrects += torch.sum(preds == labels.data)
+
+        epoch_loss = running_loss / len(train_loader.dataset)
+        epoch_acc = running_corrects.double() / len(train_loader.dataset)
+
+        model.eval()
+        val_running_loss = 0.0
+        val_running_corrects = 0
+        with torch.no_grad():
+            for inputs, labels in valid_loader:
+                outputs = model(inputs)
+                loss = criterion(outputs, labels.long())
+
+                val_running_loss += loss.item() * inputs.size(0)
+                _, preds = torch.max(outputs, 1)
+                val_running_corrects += torch.sum(preds == labels.data)
+
+        val_loss = val_running_loss / len(valid_loader.dataset)
+        val_acc = val_running_corrects.double() / len(valid_loader.dataset)
+
+        print(f'Epoch {epoch}/{num_epochs - 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}')
+
+        if val_acc > best_acc:
+            best_acc = val_acc
+            best_model_wts = model.state_dict()
+
+    model.load_state_dict(best_model_wts)
+    return model
+
+# Train both models
+num_epochs = 10
+print("Training Model 1...")
+best_model1 = train_model(model1, optimizer1, train_loader, valid_loader, num_epochs)
+
+print("Training Model 2...")
+best_model2 = train_model(model2, optimizer2, train_loader, valid_loader, num_epochs)
+
+# Evaluate both models on test data
+def evaluate_model(model, test_loader):
     model.eval()
-    total_loss = 0
-    correct = 0
+    test_running_corrects = 0
     with torch.no_grad():
-        for inputs, labels in val_loader:
-            padding_masks = (inputs != 0).any(dim=-1)
-            outputs = model(inputs, padding_masks)
-            outputs = outputs.view(-1, model.feat_dim)  # Flatten output to (batch_size * seq_length, feat_dim)
-            labels = labels.view(-1)  # Flatten labels to (batch_size * seq_length)
-            loss = criterion(outputs, labels)
-            total_loss += loss.item()
-            preds = torch.argmax(outputs, dim=-1)
-            correct += (preds == labels).sum().item()
-    accuracy = correct / (len(val_loader.dataset) * val_loader.dataset.tensors[0].shape[1])
-    return total_loss / len(val_loader), accuracy
+        for inputs, labels in test_loader:
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1)
+            test_running_corrects += torch.sum(preds == labels.data)
 
-# Initialize and Train Models with Different Positional Encodings
-models = {
-    'fixed': TSTransformerEncoder(feat_dim=32, max_len=50, d_model=128, n_heads=8, num_layers=6, dim_feedforward=512, pos_encoding='fixed'),
-    'learned': TSTransformerEncoder(feat_dim=32, max_len=50, d_model=128, n_heads=8, num_layers=6, dim_feedforward=512, pos_encoding='learned'),
-}
-
-criterion = nn.CrossEntropyLoss()
-results = {}
-
-for name, model in models.items():
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    train_model(model, train_loader, criterion, optimizer, num_epochs=10)
-    val_loss, val_accuracy = evaluate_model(model, val_loader, criterion)
-    results[name] = {'val_loss': val_loss, 'val_accuracy': val_accuracy}
-
-print(results)
+    test_acc = test_running_corrects.double() / len(test_loader.dataset)
+    print(f'Test Acc: {test_acc:.4f}')
