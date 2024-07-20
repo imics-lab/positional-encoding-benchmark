@@ -134,3 +134,45 @@ def get_pos_encoder(pos_encoding):
         return AbsolutePositionalEncoding
     else:
         raise ValueError(f"Unknown positional encoding type: {pos_encoding}")
+    
+
+
+class SineSPE(nn.Module):
+    def __init__(self, in_features, max_len=512):
+        super(SineSPE, self).__init__()
+        self.in_features = in_features
+        self.max_len = max_len
+        self.position = nn.Parameter(torch.zeros(1, max_len, in_features))
+        self.register_buffer('sine', self._generate_sine_encoding())
+
+    def _generate_sine_encoding(self):
+        position = torch.arange(self.max_len).unsqueeze(1).float()
+        div_term = torch.exp(torch.arange(0, self.in_features, 2).float() * -(math.log(10000.0) / self.in_features))
+        encoding = torch.zeros(self.max_len, self.in_features)
+        encoding[:, 0::2] = torch.sin(position * div_term)
+        encoding[:, 1::2] = torch.cos(position * div_term)
+        return encoding
+
+    def forward(self, seq_len):
+        return self.sine[:seq_len, :].unsqueeze(0)  # Shape: (1, seq_len, in_features)
+
+
+class ConvSPE(nn.Module):
+    def __init__(self, num_heads, in_features, kernel_size=3, num_realizations=1):
+        super(ConvSPE, self).__init__()
+        padding = kernel_size // 2  # This ensures that the output size matches the input size if stride=1
+
+        # Define a 1D convolutional layer
+        self.conv = nn.Conv1d(in_features, in_features, kernel_size=kernel_size, padding=padding)
+
+        self.num_heads = num_heads
+        self.in_features = in_features
+        self.kernel_size = kernel_size
+        self.num_realizations = num_realizations
+
+    def forward(self, x):
+        # x should be of shape (batch_size, seq_len, in_features)
+        x = x.permute(0, 2, 1)  # Change shape to (batch_size, in_features, seq_len)
+        x = self.conv(x)  # Apply convolution
+        x = x.permute(0, 2, 1)  # Change shape back to (batch_size, seq_len, in_features)
+        return x    
