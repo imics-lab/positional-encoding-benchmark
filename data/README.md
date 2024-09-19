@@ -68,6 +68,37 @@ This folder utilizes multiple time-series datasets for classification tasks acro
 - **No. of Classes**: 2
 - **Description**: The SelfRegulationSCP1 dataset consists of EEG signals related to self-regulation through slow cortical potentials (SCPs). Each instance contains 896 time steps, and the classification task is binary.
 
+### 9. **UniMiB-SHAR**
+- **Type**: Human Activity Recognition (HAR)
+- **Train Size**: 4,601
+- **Validation Size**: 1,454
+- **Test Size**: 1,524
+- **Length**: 151 time steps
+- **No. of Classes**: 9
+- **Description**: The UniMiB-SHAR dataset is used for classifying human activities based on sensor data. It contains training, validation, and test sets with 151 time steps per instance.
+
+### 10. **Leotta_2021**
+- **Type**: Human Activity Recognition (HAR)
+- **Train Size**: 2,391
+- **Validation Size**: 1,167
+- **Test Size**: 1,987
+- **Length**: 300 time steps
+- **No. of Classes**: 18
+- **Description**: The Leotta 2021 dataset includes sensor data for various activities and is used for classifying 18 different activities. Each instance consists of 300 time steps.
+
+## Downloading Datasets
+
+1. **Time-Series Classification Datasets**:  
+   You can download the majority of the datasets used in this project from the UCR/UEA Time Series Classification repository:  
+   [https://timeseriesclassification.com/dataset.php](https://timeseriesclassification.com/dataset.php)
+
+2. **UniMiB-SHAR Dataset**:  
+   The UniMiB-SHAR dataset can be downloaded directly from the files provided in the `UniMiB-SHAR` folder of this project.
+
+3. **Leotta_2021 Dataset**:  
+   The Leotta 2021 dataset can be downloaded from the files provided in the `Leotta_2021` folder of this project.
+
+
 ## Data Preprocessing Steps
 
 1. **Loading the Data**: 
