@@ -1,0 +1,20 @@
+<p> Sleep contains 153 whole-night sleeping Electroencephalography
+(EEG) recordings taken from physionet https://www.physionet.org/content/sleep-edfx/1.0.0/ and formatted into a classification problem in [1]. The data is collected
+from 82 healthy subjects. The 1-lead EEG signal is sampled at 100 Hz.</p>
+
+<p>The series were segmented into non overlapping sub series, each of which forms a case. Each case is labelled with one of the five sleeping patterns/stages: Wake (W), Nonrapid
+eye movement (N1, N2, N3) and Rapid Eye Movement (REM). The classes are not balanced and there are differences in the class distribution for the train and test. Train/test proportions in brackets after name.</p>
+
+<ol>
+<li>Wake (13.84% in train and 4.05% in test)
+<li>Non rapid eye movement type 1 (6.56% in train and 10.98% in test)
+<li>Non rapid eye movement type 2 (42.73% in train and 48.93% in test)
+<li>Non rapid eye movement type 3 (15.81% in train and 18.82% in test)
+<li>Rapid Eye Movement (21.06% in train and 18.82% in test)
+</ol>
+
+
+The data were split in [1] into 371,055 train cases, 107,730 validation and 90,315 test. We have added the validation set to the end of the train file to ease reproduction if a validation set is needed. For reference, a MiniRocket classifier gets accuracy of 92.7% on the default test data.</p>
+
+[1] Zhang et al. Self-Supervised Contrastive Pre-Training For Time Series via Time-Frequency Consistency, NeurIPS 2022.
+
