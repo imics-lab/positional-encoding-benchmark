@@ -194,3 +194,81 @@ class TUPEMultiHeadAttention(nn.Module):
         # out.shape == (batch_size, seq_len, d_model)
         out = self.dropout(out)
         return out
+
+
+class TPS_SelfAttention(nn.Module):
+    def __init__(self, num_heads, model_dim, max_len, pow=2, LrEnb=0, LrMo=0, dropout=0.1):
+        super(TPS_SelfAttention_Author, self).__init__()
+        assert model_dim % num_heads == 0
+        self.num_heads = num_heads
+        self.model_dim = model_dim
+        self.d_k = model_dim // num_heads
+        self.pow = pow
+        self.LrEnb = LrEnb
+        self.LrMo = LrMo
+        self.Max_Len = max_len
+
+        # Initialize multi-head attention module
+        self.attention = nn.MultiheadAttention(embed_dim=model_dim, num_heads=num_heads, dropout=dropout)
+
+        # Precompute temporal distance
+        t = torch.arange(0, max_len, dtype=torch.float)
+        t1 = t.repeat(max_len, 1)
+        t2 = t1.permute([1, 0])
+
+        if pow == 2:
+            dis1 = torch.exp(-1 * torch.pow((t2 - t1), 2) / 2)
+            self.dist = nn.Parameter(-1 * torch.pow((t2 - t1), 2) / 2, requires_grad=False)
+        else:
+            dis1 = torch.exp(-1 * torch.abs((t2 - t1)))
+            self.dist = nn.Parameter(-1 * torch.abs((t2 - t1)), requires_grad=False)
+
+        if LrEnb:
+            self.adj1 = nn.Parameter(dis1)  # Learnable temporal weighting
+
+        # Dropout layer for regularization
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, q, k, v, mask=None):
+        # q, k, v expected to have shape: [seq_len, batch_size, embedding_dim]
+        
+        # Multi-head attention forward pass
+        attn_output, attn_weights = self.attention(q, k, v, key_padding_mask=mask)
+        
+        # Apply Gaussian-based temporal weighting
+        seq_len = q.size(0)  # Extract sequence length from q
+        batch_size = q.size(1)  # Extract batch size
+        num_heads = self.num_heads
+        
+        # Dynamically compute temporal distance matrix based on seq_len
+        t = torch.arange(0, seq_len, dtype=torch.float, device=q.device)
+        t1 = t.repeat(seq_len, 1)
+        t2 = t1.permute([1, 0])
+
+        if self.pow == 2:
+            dist_matrix = torch.exp(-1 * torch.pow((t2 - t1), 2) / 2)
+        else:
+            dist_matrix = torch.exp(-1 * torch.abs((t2 - t1)))
+
+        # Expand dist_matrix to match the shape of attn_weights [batch_size, seq_len, seq_len]
+        expanded_dist = dist_matrix.unsqueeze(0).expand(batch_size, -1, -1)
+
+        # Apply Gaussian decay to attention weights
+        weighted_attn = attn_weights * expanded_dist
+
+        # Normalize attention scores
+        weighted_attn = weighted_attn / weighted_attn.sum(dim=-1, keepdim=True)
+
+        # Reshape `v` to [batch_size, seq_len, model_dim] for correct matrix multiplication
+        v = v.permute(1, 0, 2)  # Change `v` from [seq_len, batch_size, model_dim] to [batch_size, seq_len, model_dim]
+
+        # Matrix multiplication for attention output
+        output = torch.bmm(weighted_attn, v)  # Apply attention weights to the value matrix
+
+        # Reshape the output back to [seq_len, batch_size, model_dim]
+        output = output.permute(1, 0, 2)  # Change back to [seq_len, batch_size, model_dim]
+
+        # Apply dropout to the attention output
+        output = self.dropout(output)
+
+        return output, weighted_attn
