@@ -45,7 +45,7 @@ To install and run the Positional Encoding Benchmark, follow these steps:
 git clone https://github.com/imics-lab/positional-encoding-benchmark.git
 cd positional-encoding-benchmark
 pip install -r requirements.txt
-
+```
 
 <!-- CONTRIBUTING -->
 ## Contributing
