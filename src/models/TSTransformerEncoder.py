@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from patch_embedding_layer import TimeSeriesPatchEmbeddingLayer
 import math
+from src.encodings.positional_encodings import get_pos_encoder
 
 class TransformerBatchNormEncoderLayer(nn.Module):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation="gelu"):

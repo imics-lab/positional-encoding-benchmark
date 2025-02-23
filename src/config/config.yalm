@@ -1,0 +1,19 @@
+model:
+  type: 'batch_norm'  # or 'patch_embed'
+  encoding: 'tupe'    # ['pe', 'lpe', 'rpe', 'tape', 'erpe', 'tupe', 'convspe', 't-pe']
+  input_timesteps: 100
+  patch_size: 16
+  embedding_dim: 128
+  num_layers: 4
+  num_heads: 8
+  dim_feedforward: 256
+  dropout: 0.1
+
+training:
+  batch_size: 32
+  learning_rate: 0.001
+  epochs: 100
+  device: 'cuda'
+
+dataset:
+  name: 'Sleep'

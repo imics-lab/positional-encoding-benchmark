@@ -122,18 +122,6 @@ def get_relative_positions(
         x - y, bidirectional, num_buckets, max_distance
     )
     return relative_positions    
-
-def get_pos_encoder(pos_encoding):
-    if pos_encoding == 'fixed':
-        return FixedPositionalEncoding
-    elif pos_encoding == 'learned':
-        return LearnedPositionalEncoding
-    elif pos_encoding == 'tape':
-        return tAPE
-    elif pos_encoding == 'absolute':
-        return AbsolutePositionalEncoding
-    else:
-        raise ValueError(f"Unknown positional encoding type: {pos_encoding}")
     
 
 
@@ -204,3 +192,17 @@ class VariablePositionalEncoding(nn.Module):
     def forward(self, x, variable_idx):
         variable_embed = self.variable_embedding(variable_idx)
         return x + variable_embed.unsqueeze(0)
+
+
+
+def get_pos_encoder(pos_encoding):
+    if pos_encoding == 'fixed':
+        return FixedPositionalEncoding
+    elif pos_encoding == 'learned':
+        return LearnedPositionalEncoding
+    elif pos_encoding == 'tape':
+        return tAPE
+    elif pos_encoding == 'absolute':
+        return AbsolutePositionalEncoding
+    else:
+        raise ValueError(f"Unknown positional encoding type: {pos_encoding}")

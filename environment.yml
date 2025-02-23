@@ -25,6 +25,7 @@ dependencies:
   - pandas
   - scikit-learn
   - matplotlib
+  
   # Uncomment the below to add pip dependencies if necessary"
   # - pip:
     # - mydep==1.0

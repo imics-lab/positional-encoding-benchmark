@@ -9,7 +9,7 @@ import numpy as np
 from load_data import get_dataset
 
 import torch.optim as optim
-from time_series_transformer import TimeSeriesTransformer
+from src.models.TimeSeriesTransformer import TimeSeriesTransformer
 from time_series_transformer_batchnorm import TSTransformerEncoder
 from utils import get_dataloaders
 
